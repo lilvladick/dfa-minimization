@@ -1,135 +1,220 @@
 #include "minimize.hpp"
-#include <unordered_set>
-#include <unordered_map>
-#include <queue>
 #include <vector>
+#include <queue>
+#include <set> 
+#include <map> 
 #include <algorithm>
+#include <utility>
 
-using namespace std;
 
 void minimize_dfa(DFA& dfa) {
+    if (dfa.num_states <= 1) {
+        // Автомат с 0 или 1 состоянием уже минимален.
+        return;
+    }
+     if (dfa.start_state < 0 ) {
+         // Невалидное начальное состояние. Можно вернуть ошибку или пустой автомат.
+         dfa.num_states = 0;
+         dfa.start_state = -1;
+         dfa.transitions.clear();
+         dfa.final_states.clear();
+         dfa.alphabet.clear();
+         return;
+     }
+
+
     // 1. Поиск достижимых состояний с помощью BFS
-    unordered_set<int> reachable;
-    queue<int> q;
-    q.push(dfa.start_state);
+    std::set<int> reachable; 
+    std::queue<int> q;
+
     reachable.insert(dfa.start_state);
-    
+    q.push(dfa.start_state);
+
     while (!q.empty()) {
-        int cur = q.front();
+        int current_state = q.front();
         q.pop();
+
         for (char symbol : dfa.alphabet) {
-            auto it = dfa.transitions.find({cur, symbol});
+            auto it = dfa.transitions.find({current_state, symbol});
             if (it != dfa.transitions.end()) {
-                int next = it->second;
-                if (reachable.insert(next).second) {
-                    q.push(next);
+                int next_state = it->second;
+                // .second == true, если элемент был успешно вставлен (т.е. новый)
+                if (reachable.insert(next_state).second) {
+                    q.push(next_state);
                 }
             }
         }
     }
-    
-    // 2. Начальное разбиение на финальные и нефинальные состояния
-    unordered_set<int> finalStates;
-    unordered_set<int> nonFinalStates;
+
+    // Обработка случая, если начальное состояние недостижимо (или нет достижимых)
+    if (reachable.empty() || reachable.find(dfa.start_state) == reachable.end()) {
+         dfa.num_states = 0;
+         dfa.start_state = -1;
+         dfa.transitions.clear();
+         dfa.final_states.clear();
+         dfa.alphabet.clear();
+         return;
+     }
+
+    std::map<int, std::map<char, std::set<int>>> rev_transitions;
     for (int state : reachable) {
-        if (dfa.final_states.find(state) != dfa.final_states.end()) {
-            finalStates.insert(state);
-        } else {
-            nonFinalStates.insert(state);
+        for (char symbol : dfa.alphabet) {
+            auto it = dfa.transitions.find({state, symbol});
+            if (it != dfa.transitions.end()) {
+                int target_state = it->second;
+                if (reachable.count(target_state)) {
+                    rev_transitions[target_state][symbol].insert(state);
+                }
+            }
         }
     }
-    
-    vector<unordered_set<int>> partitions;
-    if (!nonFinalStates.empty())
-        partitions.push_back(move(nonFinalStates));
-    if (!finalStates.empty())
-        partitions.push_back(move(finalStates));
-    
+
+    // 2. Начальное разбиение на финальные и нефинальные состояния (только достижимые)
+    std::vector<std::set<int>> partitions;
+    std::set<int> initial_final;
+    std::set<int> initial_non_final;
+
+    for (int state : reachable) {
+        if (dfa.final_states.count(state)) {
+            initial_final.insert(state);
+        } else {
+            initial_non_final.insert(state);
+        }
+    }
+
+    if (!initial_non_final.empty()) {
+        partitions.push_back(std::move(initial_non_final));
+    }
+    if (!initial_final.empty()) {
+        partitions.push_back(std::move(initial_final));
+    }
+
     // 3. Присвоение классов состояниям (индекс в partitions)
-    vector<int> stateClass(dfa.num_states, -1);
+    std::map<int, int> state_class;
     for (size_t i = 0; i < partitions.size(); ++i) {
         for (int state : partitions[i]) {
-            stateClass[state] = i;
+            state_class[state] = i;
         }
     }
-    
+
     // 4. Алгоритм Хопкрофта
-    queue<pair<unordered_set<int>, char>> splitterQueue;
-    const auto& smallerSet = (finalStates.size() <= nonFinalStates.size()) ? finalStates : nonFinalStates;
-    for (char symbol : dfa.alphabet) {
-        if (!smallerSet.empty())
-            splitterQueue.push({smallerSet, symbol});
+    std::set<int> worklist;
+    if (partitions.size() > 1) {
+        if (partitions[0].size() <= partitions[1].size()) {
+            worklist.insert(0);
+        } else {
+            worklist.insert(1);
+        }
     }
-    
-    while (!splitterQueue.empty()) {
-        auto [A, symbol] = move(splitterQueue.front());
-        splitterQueue.pop();
-        
-        vector<pair<size_t, unordered_set<int>>> splits;
-        for (size_t i = 0; i < partitions.size(); ++i) {
-            unordered_map<int, unordered_set<int>> transitionClasses;
-            for (int state : partitions[i]) {
-                auto it = dfa.transitions.find({state, symbol});
-                int targetClass = -1;
-                if (it != dfa.transitions.end() && reachable.count(it->second)) {
-                    targetClass = stateClass[it->second];
+
+    while (!worklist.empty()) {
+        int partition_index_A = *worklist.begin();
+        worklist.erase(worklist.begin());
+        const auto& A = partitions[partition_index_A];
+
+        for (char symbol : dfa.alphabet) {
+            std::set<int> X;
+            for (int state_in_A : A) {
+                auto rev_target_it = rev_transitions.find(state_in_A);
+                if (rev_target_it != rev_transitions.end()) {
+                    auto rev_symbol_it = rev_target_it->second.find(symbol);
+                    if (rev_symbol_it != rev_target_it->second.end()) {
+                        const auto& sources = rev_symbol_it->second;
+                        X.insert(sources.begin(), sources.end());
+                    }
                 }
-                transitionClasses[targetClass].insert(state);
             }
-            for (const auto& [targetClass, states] : transitionClasses) {
-                if (!states.empty() && states.size() < partitions[i].size()) {
-                    splits.push_back({i, move(states)});
+
+            if (X.empty()) {
+                continue;
+            }
+            for (int i = static_cast<int>(partitions.size()) - 1; i >= 0; --i) {
+                if (partitions[i].empty()) continue; // Пропускаем пустые разделы
+
+                auto& Y = partitions[i]; 
+                std::set<int> Y_intersect;
+                std::set<int> Y_diff;
+
+                for (int state_in_Y : Y) {
+                    if (X.count(state_in_Y)) {
+                        Y_intersect.insert(state_in_Y);
+                    } else {
+                        Y_diff.insert(state_in_Y);
+                    }
+                }
+
+                if (Y_intersect.empty() || Y_diff.empty()) {
+                    continue;
+                }
+
+                int new_partition_index = partitions.size();
+
+                if (Y_intersect.size() <= Y_diff.size()) {
+                    partitions.push_back(std::move(Y_intersect)); // Меньшая -> новая
+                    partitions[i] = std::move(Y_diff);            // Большая -> старая (Y=partitions[i])
+                } else {
+                    partitions.push_back(std::move(Y_diff));      // Меньшая -> новая
+                    partitions[i] = std::move(Y_intersect);       // Большая -> старая (Y=partitions[i])
+                }
+
+                // Обновляем классы для состояний в новом разделе
+                for (int state : partitions.back()) {
+                    state_class[state] = new_partition_index;
+                }
+
+                if (worklist.count(i)) {
+                    // Если старый раздел Y(i) был в worklist, заменяем его обоими новыми
+                    worklist.erase(i);
+                    worklist.insert(i);
+                    worklist.insert(new_partition_index);
+                } else {
+                    // Иначе добавляем только меньший (который стал новым)
+                    worklist.insert(new_partition_index);
                 }
             }
         }
-        
-        for (auto& [idx, X] : splits) {
-            unordered_set<int> Y;
-            for (int state : partitions[idx]) {
-                if (X.find(state) == X.end())
-                    Y.insert(state);
-            }
-            partitions[idx] = move(X);
-            partitions.push_back(move(Y));
-            int newIndex = partitions.size() - 1;
-            for (int state : partitions.back()) {
-                stateClass[state] = newIndex;
-            }
-            const auto& smaller = (partitions[idx].size() <= partitions.back().size()) ? partitions[idx] : partitions.back();
-            for (char a : dfa.alphabet) {
-                splitterQueue.push({smaller, a});
-            }
-        }
     }
-    
-    // 5. Инициализация минимизированного DFA
+
+    // 5. Построение минимизированного DFA
     DFA minimizedDFA;
-    minimizedDFA.alphabet = dfa.alphabet;
+    minimizedDFA.alphabet = dfa.alphabet; 
     minimizedDFA.num_states = partitions.size();
-    
-    // Формирование переходов
-    for (const auto& [key, target] : dfa.transitions) {
-        int oldState = key.first;
-        char symbol = key.second;
-        if (reachable.count(oldState) && reachable.count(target)) {
-            int newState = stateClass[oldState];
-            int newTarget = stateClass[target];
-            if (newState != -1 && newTarget != -1) {
-                minimizedDFA.transitions[{newState, symbol}] = newTarget;
+
+    // Находим новое начальное состояние
+    auto start_class_it = state_class.find(dfa.start_state);
+    if (start_class_it != state_class.end()) {
+        minimizedDFA.start_state = start_class_it->second;
+    } else {
+         minimizedDFA.start_state = -1;
+         minimizedDFA.num_states = 0;
+         minimizedDFA.transitions.clear();
+         minimizedDFA.final_states.clear();
+         dfa = std::move(minimizedDFA);
+         return;
+    }
+
+    // Формирование переходов и финальных состояний
+    for (size_t i = 0; i < partitions.size(); ++i) {
+        if (partitions[i].empty()) continue; 
+
+        int representative_state = *partitions[i].begin();
+
+        if (dfa.final_states.count(representative_state)) {
+            minimizedDFA.final_states.insert(i);
+        }
+
+        for (char symbol : minimizedDFA.alphabet) {
+            auto it = dfa.transitions.find({representative_state, symbol});
+            if (it != dfa.transitions.end()) {
+                int old_target_state = it->second;
+                // Находим класс целевого состояния (оно должно быть достижимо и иметь класс)
+                auto target_class_it = state_class.find(old_target_state);
+                if (target_class_it != state_class.end()) {
+                    int new_target_state_class = target_class_it->second;
+                    minimizedDFA.transitions.insert({{i, symbol}, new_target_state_class});
+                }
             }
         }
     }
-    
-    // Установка нового начального состояния
-    minimizedDFA.start_state = stateClass[dfa.start_state];
-    
-    // Установка новых финальных состояний
-    for (int state : dfa.final_states) {
-        if (reachable.count(state) && stateClass[state] != -1) {
-            minimizedDFA.final_states.insert(stateClass[state]);
-        }
-    }
-    
-    // Перезапись DFA
-    dfa = move(minimizedDFA);
+    dfa = std::move(minimizedDFA);
 }

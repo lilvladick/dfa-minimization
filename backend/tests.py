@@ -1,25 +1,67 @@
 import subprocess
 import json
 import os
+import sys
 
-# Функция для запуска программы и получения вывода
 def run_dfa_minimizer(input_data):
-    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     dfa_minimizer_path = os.path.join(current_dir, 'dfa_minimizer')
-    process = subprocess.run(
-        [dfa_minimizer_path],
-        input=json.dumps(input_data),
-        text=True,
-        capture_output=True
-    )
-    if process.returncode != 0:
-        return None, process.stderr
+
+    if not os.path.exists(dfa_minimizer_path):
+        return None, f"Ошибка: Исполняемый файл не найден по пути '{dfa_minimizer_path}'"
+    if not os.access(dfa_minimizer_path, os.X_OK):
+         return None, f"Ошибка: Нет прав на выполнение файла '{dfa_minimizer_path}'"
+
     try:
-        output = json.loads(process.stdout)
-        return output, None
-    except json.JSONDecodeError:
-        return None, "Ошибка декодирования JSON"
+        process = subprocess.run(
+            [dfa_minimizer_path],
+            input=json.dumps(input_data),
+            text=True,
+            capture_output=True,
+            check=False
+        )
+        
+        if process.returncode != 0:
+            return None, f"Ошибка выполнения C++ программы (код {process.returncode}): {process.stderr}"
+        try:
+            stdout_cleaned = process.stdout.strip()
+            if not stdout_cleaned:
+                 return None, "Ошибка: Получен пустой вывод от C++ программы."
+            output = json.loads(stdout_cleaned)
+            return output, None
+        except json.JSONDecodeError as e:
+            return None, f"Ошибка декодирования JSON: {e}\nПолучено: '{process.stdout}'"
+
+    except Exception as e:
+         return None, f"Неожиданная ошибка при запуске C++ программы: {e}"
+
+
+# Вспомогательная функция для сравнения DFA
+def compare_dfa(output, expected):
+    # Сравнение полей верхнего уровня
+    if output.get("num_states") != expected.get("num_states"):
+        return False, f"Разное количество состояний: получено {output.get('num_states')}, ожидалось {expected.get('num_states')}"
+    if output.get("start_state") != expected.get("start_state"):
+         return False, f"Разное начальное состояние: получено {output.get('start_state')}, ожидалось {expected.get('start_state')}"
+
+    # Сравнение множеств (порядок не важен)
+    if set(output.get("alphabet", [])) != set(expected.get("alphabet", [])):
+        return False, f"Разный алфавит: получено {output.get('alphabet', [])}, ожидалось {expected.get('alphabet', [])}"
+    if set(output.get("final_states", [])) != set(expected.get("final_states", [])):
+        return False, f"Разные финальные состояния: получено {output.get('final_states', [])}, ожидалось {expected.get('final_states', [])}"
+
+    # Сравнение переходов (порядок не важен, но содержимое важно)
+    # Преобразуем список словарей в множество кортежей для сравнения
+    try:
+        output_transitions = set(tuple(sorted(t.items())) for t in output.get("transitions", []))
+        expected_transitions = set(tuple(sorted(t.items())) for t in expected.get("transitions", []))
+        if output_transitions != expected_transitions:
+             return False, f"Разные переходы:\nПолучено: {sorted(list(output_transitions))}\nОжидалось: {sorted(list(expected_transitions))}"
+    except TypeError:
+        return False, "Не удалось сравнить переходы из-за типов данных"
+
+    return True, "DFA совпадают"
+
 
 # Тест 1: Простой DFA с двумя состояниями
 def test_simple_dfa():
@@ -49,17 +91,19 @@ def test_simple_dfa():
     }
     output, error = run_dfa_minimizer(input_data)
     if error:
-        print(f"Тест не пройден: {error}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
+        print(f"Тест 'Простой DFA' не пройден: {error}", file=sys.stderr)
         assert False, f"Ошибка выполнения: {error}"
-    elif output == expected_output:
+
+    are_equal, reason = compare_dfa(output, expected_output)
+    if are_equal:
         print("Тест 'Простой DFA с двумя состояниями' пройден успешно")
         assert True
     else:
-        print("Тест не пройден: выход не совпадает с ожидаемым")
-        print(f"Получено: {json.dumps(output, indent=2)}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
-        assert False, "Выход не совпадает с ожидаемым"
+        print("Тест 'Простой DFA' не пройден: выход не совпадает с ожидаемым", file=sys.stderr)
+        print(f"Причина: {reason}", file=sys.stderr)
+        print(f"Получено: {json.dumps(output, indent=2)}", file=sys.stderr)
+        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Выход не совпадает с ожидаемым: {reason}"
 
 # Тест 2: DFA с недостижимыми состояниями
 def test_unreachable_states():
@@ -71,12 +115,13 @@ def test_unreachable_states():
             {"from": 0, "input": "1", "to": 1},
             {"from": 1, "input": "0", "to": 1},
             {"from": 1, "input": "1", "to": 1},
-            {"from": 2, "input": "0", "to": 2},
-            {"from": 2, "input": "1", "to": 2}
+            {"from": 2, "input": "0", "to": 2}, # Недостижимо
+            {"from": 2, "input": "1", "to": 2}  # Недостижимо
         ],
         "start_state": 0,
         "final_states": [1]
     }
+    # Ожидаем только состояния {0, 1}
     expected_output = {
         "num_states": 2,
         "alphabet": ["0", "1"],
@@ -91,17 +136,19 @@ def test_unreachable_states():
     }
     output, error = run_dfa_minimizer(input_data)
     if error:
-        print(f"Тест не пройден: {error}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
+        print(f"Тест 'Недостижимые состояния' не пройден: {error}", file=sys.stderr)
         assert False, f"Ошибка выполнения: {error}"
-    elif output == expected_output:
+
+    are_equal, reason = compare_dfa(output, expected_output)
+    if are_equal:
         print("Тест 'DFA с недостижимыми состояниями' пройден успешно")
         assert True
     else:
-        print("Тест не пройден: выход не совпадает с ожидаемым")
-        print(f"Получено: {json.dumps(output, indent=2)}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
-        assert False, "Выход не совпадает с ожидаемым"
+        print("Тест 'Недостижимые состояния' не пройден: выход не совпадает с ожидаемым", file=sys.stderr)
+        print(f"Причина: {reason}", file=sys.stderr)
+        print(f"Получено: {json.dumps(output, indent=2)}", file=sys.stderr)
+        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Выход не совпадает с ожидаемым: {reason}"
 
 # Тест 3: DFA, который можно минимизировать
 def test_minimizable_dfa():
@@ -121,33 +168,40 @@ def test_minimizable_dfa():
         "start_state": 0,
         "final_states": [1, 3]
     }
+    # Ожидаемый результат после минимизации {0,2}, {1}, {3} -> 0', 1', 2'
     expected_output = {
         "num_states": 3,
         "alphabet": ["a", "b"],
         "transitions": [
-            {"from": 0, "input": "a", "to": 1},
-            {"from": 0, "input": "b", "to": 2},
-            {"from": 1, "input": "a", "to": 1},
-            {"from": 1, "input": "b", "to": 2},
-            {"from": 2, "input": "a", "to": 1},
-            {"from": 2, "input": "b", "to": 2}
+            # Переходы от класса {0,2} (новое состояние 0)
+            {"from": 0, "input": "a", "to": 1}, # в класс {1} (новое 1)
+            {"from": 0, "input": "b", "to": 0}, # в класс {0,2} (новое 0)
+            # Переходы от класса {1} (новое состояние 1)
+            {"from": 1, "input": "a", "to": 1}, # в класс {1} (новое 1)
+            {"from": 1, "input": "b", "to": 2}, # в класс {3} (новое 2)
+            # Переходы от класса {3} (новое состояние 2)
+            {"from": 2, "input": "a", "to": 1}, # в класс {1} (новое 1)
+            {"from": 2, "input": "b", "to": 0}  # в класс {0,2} (новое 0)
         ],
-        "start_state": 0,
-        "final_states": [1]
+        "start_state": 0, # Класс {0,2} содержит исходное начальное 0
+        "final_states": [1, 2] # Классы {1} и {3} содержат исходные финальные 1 и 3
     }
     output, error = run_dfa_minimizer(input_data)
     if error:
-        print(f"Тест не пройден: {error}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
+        print(f"Тест 'Минимизируемый DFA' не пройден: {error}", file=sys.stderr)
         assert False, f"Ошибка выполнения: {error}"
-    elif output == expected_output:
+
+    are_equal, reason = compare_dfa(output, expected_output)
+    if are_equal:
         print("Тест 'DFA, который можно минимизировать' пройден успешно")
         assert True
     else:
-        print("Тест не пройден: выход не совпадает с ожидаемым")
-        print(f"Получено: {json.dumps(output, indent=2)}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
-        assert False, "Выход не совпадает с ожидаемым"
+        print("Тест 'Минимизируемый DFA' не пройден: выход не совпадает с ожидаемым", file=sys.stderr)
+        print(f"Причина: {reason}", file=sys.stderr)
+        print(f"Получено: {json.dumps(output, indent=2)}", file=sys.stderr)
+        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Выход не совпадает с ожидаемым: {reason}"
+
 
 # Тест 4: DFA с одним состоянием
 def test_single_state_dfa():
@@ -171,17 +225,19 @@ def test_single_state_dfa():
     }
     output, error = run_dfa_minimizer(input_data)
     if error:
-        print(f"Тест не пройден: {error}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
+        print(f"Тест 'Одно состояние' не пройден: {error}", file=sys.stderr)
         assert False, f"Ошибка выполнения: {error}"
-    elif output == expected_output:
+
+    are_equal, reason = compare_dfa(output, expected_output)
+    if are_equal:
         print("Тест 'DFA с одним состоянием' пройден успешно")
         assert True
     else:
-        print("Тест не пройден: выход не совпадает с ожидаемым")
-        print(f"Получено: {json.dumps(output, indent=2)}")
-        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}")
-        assert False, "Выход не совпадает с ожидаемым"
+        print("Тест 'Одно состояние' не пройден: выход не совпадает с ожидаемым", file=sys.stderr)
+        print(f"Причина: {reason}", file=sys.stderr)
+        print(f"Получено: {json.dumps(output, indent=2)}", file=sys.stderr)
+        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Выход не совпадает с ожидаемым: {reason}"
 
 # Тест 5: DFA с пустым алфавитом
 def test_empty_alphabet_dfa():
@@ -192,11 +248,27 @@ def test_empty_alphabet_dfa():
         "start_state": 0,
         "final_states": [1]
     }
+    expected_output = {
+        "num_states": 1,
+        "alphabet": [],
+        "transitions": [],
+        "start_state": 0,
+        "final_states": []
+    }
     output, error = run_dfa_minimizer(input_data)
+
     if error:
-        print("Тест 'DFA с пустым алфавитом' пройден успешно: ожидалась ошибка")
+        print(f"Тест 'Пустой алфавит' не пройден: получена ошибка '{error}'", file=sys.stderr)
+        print(f"Ожидался выход: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Ожидался корректный вывод, но получена ошибка: {error}"
+
+    are_equal, reason = compare_dfa(output, expected_output)
+    if are_equal:
+        print("Тест 'DFA с пустым алфавитом' пройден успешно")
         assert True
     else:
-        print("Тест не пройден: ожидалась ошибка, но получен выход")
-        print(f"Получено: {json.dumps(output, indent=2)}")
-        assert False, "Ожидалась ошибка, но получен корректный вывод"
+        print("Тест 'Пустой алфавит' не пройден: выход не совпадает с ожидаемым", file=sys.stderr)
+        print(f"Причина: {reason}", file=sys.stderr)
+        print(f"Получено: {json.dumps(output, indent=2)}", file=sys.stderr)
+        print(f"Ожидалось: {json.dumps(expected_output, indent=2)}", file=sys.stderr)
+        assert False, f"Выход не совпадает с ожидаемым: {reason}"
