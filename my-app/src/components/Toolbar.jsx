@@ -1,6 +1,6 @@
 import { Button } from "@mui/material";
 
-const Toolbar = ({ mode, setMode, onCheckDeterminism }) => {
+const Toolbar = ({ mode, setMode, onCheckDeterminism, onMinimize }) => {
   return (
     <div
       style={{
@@ -21,6 +21,9 @@ const Toolbar = ({ mode, setMode, onCheckDeterminism }) => {
       </Button>
       <Button variant="contained" color="secondary" onClick={onCheckDeterminism}>
         Проверить ДКА
+      </Button>
+      <Button variant="contained" color="primary" onClick={onMinimize}>
+        Минимизировать
       </Button>
     </div>
   );

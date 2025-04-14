@@ -1,11 +1,15 @@
 #include "minimize.hpp"
-
+#include <unordered_set>
+#include <unordered_map>
+#include <queue>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 
-void minimizeDFA(DFA& dfa) {
-    // To find reachable states use BFS
-    set<int> reachable;
+void minimize_dfa(DFA& dfa) {
+    // 1. Поиск достижимых состояний с помощью BFS
+    unordered_set<int> reachable;
     queue<int> q;
     q.push(dfa.start_state);
     reachable.insert(dfa.start_state);
@@ -17,21 +21,17 @@ void minimizeDFA(DFA& dfa) {
             auto it = dfa.transitions.find({cur, symbol});
             if (it != dfa.transitions.end()) {
                 int next = it->second;
-                if (reachable.find(next) == reachable.end()) {
-                    reachable.insert(next);
+                if (reachable.insert(next).second) {
                     q.push(next);
                 }
             }
         }
     }
     
-    // Leave reachable states
-    vector<int> reachableStates(reachable.begin(), reachable.end());
-    
-    // Initial split table into 1 and 2 groups, where 1 is final and 2 is not
-    set<int> finalStates;
-    set<int> nonFinalStates;
-    for (int state : reachableStates) {
+    // 2. Начальное разбиение на финальные и нефинальные состояния
+    unordered_set<int> finalStates;
+    unordered_set<int> nonFinalStates;
+    for (int state : reachable) {
         if (dfa.final_states.find(state) != dfa.final_states.end()) {
             finalStates.insert(state);
         } else {
@@ -39,98 +39,97 @@ void minimizeDFA(DFA& dfa) {
         }
     }
     
-    vector<set<int>> partitions;
+    vector<unordered_set<int>> partitions;
     if (!nonFinalStates.empty())
-        partitions.push_back(nonFinalStates);
+        partitions.push_back(move(nonFinalStates));
     if (!finalStates.empty())
-        partitions.push_back(finalStates);
+        partitions.push_back(move(finalStates));
     
-    // Assign each state a class (index in partitions)
-    int maxState = 0;
-    for (int state : reachableStates)
-        if (state > maxState) maxState = state;
-    vector<int> stateClass(maxState + 1, -1);
-    for (int i = 0; i < partitions.size(); i++) {
+    // 3. Присвоение классов состояниям (индекс в partitions)
+    vector<int> stateClass(dfa.num_states, -1);
+    for (size_t i = 0; i < partitions.size(); ++i) {
         for (int state : partitions[i]) {
             stateClass[state] = i;
         }
     }
     
-    // Hopcroft's algorithm
-    queue<pair<set<int>, char>> splitterQueue;
+    // 4. Алгоритм Хопкрофта
+    queue<pair<unordered_set<int>, char>> splitterQueue;
+    const auto& smallerSet = (finalStates.size() <= nonFinalStates.size()) ? finalStates : nonFinalStates;
     for (char symbol : dfa.alphabet) {
-        if (!finalStates.empty())
-            splitterQueue.push({finalStates, symbol});
+        if (!smallerSet.empty())
+            splitterQueue.push({smallerSet, symbol});
     }
     
     while (!splitterQueue.empty()) {
-        auto [A, symbol] = splitterQueue.front();
+        auto [A, symbol] = move(splitterQueue.front());
         splitterQueue.pop();
         
-        vector<pair<int, set<int>>> splits;
-        for (int i = 0; i < partitions.size(); i++) {
-            set<int> X;
+        vector<pair<size_t, unordered_set<int>>> splits;
+        for (size_t i = 0; i < partitions.size(); ++i) {
+            unordered_map<int, unordered_set<int>> transitionClasses;
             for (int state : partitions[i]) {
                 auto it = dfa.transitions.find({state, symbol});
-                if (it != dfa.transitions.end() && A.find(it->second) != A.end()) {
-                    X.insert(state);
+                int targetClass = -1;
+                if (it != dfa.transitions.end() && reachable.count(it->second)) {
+                    targetClass = stateClass[it->second];
                 }
+                transitionClasses[targetClass].insert(state);
             }
-            if (!X.empty() && X.size() < partitions[i].size()) {
-                splits.push_back({i, X});
+            for (const auto& [targetClass, states] : transitionClasses) {
+                if (!states.empty() && states.size() < partitions[i].size()) {
+                    splits.push_back({i, move(states)});
+                }
             }
         }
         
         for (auto& [idx, X] : splits) {
-            set<int> Y;
+            unordered_set<int> Y;
             for (int state : partitions[idx]) {
                 if (X.find(state) == X.end())
                     Y.insert(state);
             }
-            partitions[idx] = X;
-            partitions.push_back(Y);
+            partitions[idx] = move(X);
+            partitions.push_back(move(Y));
             int newIndex = partitions.size() - 1;
-            for (int state : Y) {
+            for (int state : partitions.back()) {
                 stateClass[state] = newIndex;
             }
+            const auto& smaller = (partitions[idx].size() <= partitions.back().size()) ? partitions[idx] : partitions.back();
             for (char a : dfa.alphabet) {
-                splitterQueue.push({X, a});
-                splitterQueue.push({Y, a});
+                splitterQueue.push({smaller, a});
             }
         }
     }
     
-    // Initialize minimized DFA
+    // 5. Инициализация минимизированного DFA
     DFA minimizedDFA;
     minimizedDFA.alphabet = dfa.alphabet;
     minimizedDFA.num_states = partitions.size();
     
-    // Form transitions
-    for (auto &transition : dfa.transitions) {
-        int oldState = transition.first.first;
-        char symbol = transition.first.second;
-        int oldTarget = transition.second;
-
-        // Add if both states are reachable
-        if (reachable.find(oldState) != reachable.end() && reachable.find(oldTarget) != reachable.end()) {
+    // Формирование переходов
+    for (const auto& [key, target] : dfa.transitions) {
+        int oldState = key.first;
+        char symbol = key.second;
+        if (reachable.count(oldState) && reachable.count(target)) {
             int newState = stateClass[oldState];
-            int newTarget = stateClass[oldTarget];
-            minimizedDFA.transitions[{newState, symbol}] = newTarget;
+            int newTarget = stateClass[target];
+            if (newState != -1 && newTarget != -1) {
+                minimizedDFA.transitions[{newState, symbol}] = newTarget;
+            }
         }
     }
     
-    // Initialize new start state
+    // Установка нового начального состояния
     minimizedDFA.start_state = stateClass[dfa.start_state];
     
-    // initialize new final states
+    // Установка новых финальных состояний
     for (int state : dfa.final_states) {
-        // Add if both states are reachable
-        if (reachable.find(state) != reachable.end())
+        if (reachable.count(state) && stateClass[state] != -1) {
             minimizedDFA.final_states.insert(stateClass[state]);
+        }
     }
     
-    // Rewrite DFA
-    dfa = minimizedDFA;
-    
-    cout << "Minimization Complete!\n";
+    // Перезапись DFA
+    dfa = move(minimizedDFA);
 }

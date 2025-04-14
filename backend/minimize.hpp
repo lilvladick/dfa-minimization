@@ -8,6 +8,6 @@
 #include <map>
 #include <set>
 
-void minimizeDFA(DFA& dfa);
+void minimize_dfa(DFA& dfa);
 
 #endif
