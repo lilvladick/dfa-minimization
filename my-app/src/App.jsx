@@ -159,21 +159,6 @@ const App = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Диалог для отображения результата минимизации */}
-      <Dialog
-        open={minimizeDialogOpen}
-        onClose={() => { setMinimizeDialogOpen(false); }}
-        fullWidth
-        maxWidth="md"
-      >
-        <DialogTitle>Минимизированный автомат</DialogTitle>
-        <DialogContent>
-          <pre style={{ whiteSpace: "pre-wrap" }}>{minimizedJSON}</pre>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMinimizeDialogOpen(false)}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
     </div>
   );
 };
