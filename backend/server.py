@@ -29,7 +29,7 @@ def minimize_dfa():
 
     try:
         result = subprocess.run(
-            [dfa_minimizer_path],  # Используем полный путь
+            [dfa_minimizer_path],
             input=input_json,
             text=True,
             capture_output=True,
