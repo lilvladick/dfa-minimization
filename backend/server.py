@@ -42,7 +42,6 @@ def minimize_dfa():
 
     try:
         output_json = result.stdout.strip()
-        # Валидируем, что вывод — это JSON
         json.loads(output_json)
     except json.JSONDecodeError:
         return jsonify({'error': 'Минимизатор вернул невалидный JSON'}), 500
