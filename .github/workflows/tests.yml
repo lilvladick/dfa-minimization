@@ -12,7 +12,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - name: Checkout code
@@ -22,12 +26,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
-      - name: Install build essentials
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Install build tools and nlohmann-json
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y clang build-essential nlohmann-json3-dev
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew update
+            brew install llvm nlohmann-json
+            brew link --force llvm
+          fi
 
       - name: Build dfa_minimizer using build.sh
-        run: bash backend/build.sh
+        working-directory: backend
+        run: bash build.sh
 
       - name: Install Python dependencies
         run: |
