@@ -1,7 +1,80 @@
+# PyCharm и другие IDE
+.idea/
+*.iml
 .vscode/
-.venv/
+
+# Python специфичные файлы
+__pycache__/
+*.py[cod]
+*$py.class
+
+# pipenv, poetry, pip, tox
+Pipfile.lock
+Pipfile
+poetry.lock
+poetry.toml
+poetry.core.masonry.api
+tox.ini
+.tox/
+*.egg-info/
+.eggs/
+*.egg
+
+# pytest
 .pytest_cache/
-dfa
+.cache/
+.coverage
+coverage.xml
+nosetests.xml
+*.cover
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Модули и виртуалки
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Дополнительные скрытые файлы
+*~
+*.bak
+*.swp
+*.swo
+
+# MyPy, Pylint и другие анализаторы
+.mypy_cache/
+.pytype/
+.pylint.d/
+.pyre/
+
+# Секреты, ключи, сертификаты
+*.pem
+*.key
+*.crt
+
+# Служебные файлы MacOS/Windows/Linux
+.DS_Store
+.AppleDouble
+._*
+Thumbs.db
+Desktop.ini
+
+# Логи
+*.log
+
+# Кэш и сборка
+build/
+dist/
+*.manifest
+*.spec
+
+# Общие артефакты C/C++
 *.o
 *.obj
 *.exe
@@ -13,46 +86,30 @@ dfa
 *.lib
 *.h.gch
 *.ii
-*.log
-*.d
 *.pch
 *.idb
 *.pdb
 *.ilk
-*.manifest
 *.exp
-*.app
-*.ipa
 
-/build/
-/bin/
-/lib/
-/dist/
-/Debug/
-/Release/
-
-.DS_Store
-.AppleDouble
-._*
-
-Thumbs.db
-Desktop.ini
-
+# Node (если вдруг есть фронтенд)
 node_modules/
 npm-debug.log*
 yarn-error.log
-.env
-.env.local
-.env.*.local
-.idea/
-.eslintcache
 .next/
 out/
+.eslintcache
+bower_components/
 
-/node_modules/
-/bower_components/
+# Конфиг среды
+.env
+.env.*.local
+.env.local
 
-/build/
+# Docker
+*.pid
 
-coverage/
-.cache/
+# CI
+.pytest_cache/
+.coverage
+htmlcov/
