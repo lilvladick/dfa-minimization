@@ -4,11 +4,7 @@ import json
 import os
 import sys
 
-# -----------------------
-# Utility: run the C++ minimizer
-# -----------------------
 def run_dfa_minimizer(input_data):
-    # Путь к исполняемому файлу относительно этого теста
     current_dir = os.path.dirname(os.path.abspath(__file__))
     dfa_minimizer_path = os.path.join(current_dir, "dfa_minimizer")
 
@@ -34,9 +30,6 @@ def run_dfa_minimizer(input_data):
     except json.JSONDecodeError as e:
         return None, f"JSONDecodeError: {e}\nВывод: {out!r}"
 
-# -----------------------
-# Utility: simulate DFA on a word
-# -----------------------
 def simulate_dfa(dfa, word):
     state = dfa["start_state"]
     # Построим карту переходов
@@ -47,10 +40,6 @@ def simulate_dfa(dfa, word):
             return False
         state = trans[key]
     return state in set(dfa.get("final_states", []))
-
-# -----------------------
-# Utility: проверка эквивалентности двух DFA
-# -----------------------
 def check_equivalence(dfa1, dfa2, test_words):
     for w in test_words:
         acc1 = simulate_dfa(dfa1, w)
@@ -59,15 +48,10 @@ def check_equivalence(dfa1, dfa2, test_words):
             return False, f"Разное поведение на слове {w!r}: {acc1} != {acc2}"
     return True, "Эквивалентны"
 
-# Слова для тестирования эквивалентности
 TEST_WORDS = [
     "", "a", "b", "aa", "ab", "ba", "bb",
     "aaa", "aab", "aba", "abb", "baa", "bba", "bbb"
 ]
-
-# -----------------------
-# Тестовые случаи
-# -----------------------
 
 TEST_CASES = [
     (
@@ -159,8 +143,6 @@ TEST_CASES = [
             "final_states": [1],
         },
     ),
-    # ДОПОЛНИТЕЛЬНЫЕ ТЕСТЫ:
-    
     (
         "even_number_of_as",
         {
@@ -288,10 +270,6 @@ TEST_CASES = [
         },
     ),
 ]
-
-# -----------------------
-# Параметризованный тест
-# -----------------------
 @pytest.mark.parametrize("name,input_data,expected", TEST_CASES)
 def test_dfa_minimization(name, input_data, expected):
     output, error = run_dfa_minimizer(input_data)

@@ -17,13 +17,8 @@ def minimize_dfa():
         return jsonify({'error': 'Неверный JSON'}), 400
 
     input_json = json.dumps(data)
-
-    # Получаем директорию, где находится server.py
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Формируем полный путь к dfa_minimizer
     dfa_minimizer_path = os.path.join(current_dir, 'dfa_minimizer')
-
-    # Проверяем, существует ли файл
     if not os.path.isfile(dfa_minimizer_path):
         return jsonify({'error': f'Файл {dfa_minimizer_path} не найден'}), 500
 

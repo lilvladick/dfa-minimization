@@ -7,9 +7,7 @@
 #include <algorithm>
 
 void minimize_dfa(DFA& dfa) {
-    // === ШАГ 0: Удаление недостижимых состояний и мёртвых состояний ===
-
-    // 0.1 Найдём все состояния, достижимые из стартового
+    // === Удаление недостижимых состояний и мёртвых состояний ===
     std::set<int> reachable;
     std::queue<int> q;
     q.push(dfa.start_state);
@@ -29,7 +27,6 @@ void minimize_dfa(DFA& dfa) {
         }
     }
 
-    // 0.2 Найдём все состояния, из которых достижимо финальное
     std::map<int, std::vector<int>> reverse_graph;
     for (auto& [key, to] : dfa.transitions) {
         reverse_graph[to].push_back(key.first);
@@ -52,7 +49,6 @@ void minimize_dfa(DFA& dfa) {
         }
     }
 
-    // 0.3 Пересечение: состояния, которые достижимы И могут дойти до финального
     std::set<int> useful_states;
     for (int s : reachable) {
         if (can_reach_final.count(s)) {
@@ -60,7 +56,6 @@ void minimize_dfa(DFA& dfa) {
         }
     }
 
-    // 0.4 Отфильтровать переходы
     std::map<std::pair<int, char>, int> filtered_transitions;
     for (auto& [key, to] : dfa.transitions) {
         int from = key.first;
@@ -79,7 +74,7 @@ void minimize_dfa(DFA& dfa) {
     }();
     dfa.num_states = useful_states.size();
 
-    // === Дальше идёт как раньше — минимизация Хопкрофтом ===
+    // === минимизация Хопкрофтом ===
 
     std::vector<std::set<int>> partitions;
     std::map<int, int> state_class;
@@ -157,7 +152,6 @@ void minimize_dfa(DFA& dfa) {
         }
     }
 
-    // Новый DFA
     DFA minimized;
     minimized.num_states = partitions.size();
     minimized.alphabet = dfa.alphabet;

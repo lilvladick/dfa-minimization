@@ -7,7 +7,6 @@
 using json = nlohmann::json;
 
 int main() {
-    // Читаем JSON из stdin
     std::string input;
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -16,14 +15,12 @@ int main() {
 
     try {
         json j = json::parse(input);
-
-        // Преобразуем JSON в DFA
         DFA dfa;
         dfa.num_states = j["num_states"];
         for (const auto& sym : j["alphabet"]) {
             std::string s = sym.get<std::string>();
             if (s.empty()) continue;
-            dfa.alphabet.insert(s[0]); // Берем первый символ строки
+            dfa.alphabet.insert(s[0]);
         }
         for (const auto& t : j["transitions"]) {
             int from = t["from"];
@@ -37,11 +34,7 @@ int main() {
         for (const auto& f : j["final_states"]) {
             dfa.final_states.insert(f.get<int>());
         }
-
-        // Минимизируем ДКА
         minimize_dfa(dfa);
-
-        // Преобразуем DFA обратно в JSON
         json output;
         output["num_states"] = dfa.num_states;
         output["alphabet"] = std::vector<std::string>();
@@ -62,7 +55,6 @@ int main() {
         output["start_state"] = dfa.start_state;
         output["final_states"] = std::vector<int>(dfa.final_states.begin(), dfa.final_states.end());
 
-        // Выводим JSON
         std::cout << output.dump() << std::endl;
 
     } catch (const std::exception& e) {
